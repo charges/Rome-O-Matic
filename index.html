@@ -144,14 +144,8 @@
 const ArticleCard = ({ article }) => {
   const [imageError, setImageError] = useState(false);
 
-  // Only show an image when:
-  // - the source is Wikipedia
-  // - there is a thumbnail
-  // - the image hasn't failed to load
-  const showImage =
-    article.source === 'Wikipedia' &&
-    article.thumbnail &&
-    !imageError;
+  // Show image only if we actually have a thumbnail
+  const showImage = article.thumbnail && !imageError;
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6 hover:shadow-lg transition-shadow">
@@ -174,10 +168,10 @@ const ArticleCard = ({ article }) => {
             </span>
             <span className="text-xs text-gray-400">• {article.source}</span>
           </div>
+
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Clock size={14} />
-              {article.readTime} min
+              <Clock size={14} />{article.readTime} min
             </span>
             <button
               onClick={() => toggleSave(article)}
@@ -193,13 +187,8 @@ const ArticleCard = ({ article }) => {
           </div>
         </div>
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-3">
-          {article.title}
-        </h2>
-
-        <p className="text-gray-700 mb-4 leading-relaxed">
-          {article.extract}
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-3">{article.title}</h2>
+        <p className="text-gray-700 mb-4 leading-relaxed">{article.extract}</p>
 
         <a
           href={article.url}
@@ -207,8 +196,7 @@ const ArticleCard = ({ article }) => {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
         >
-          Read full article
-          <ExternalLink size={16} />
+          Read full article <ExternalLink size={16} />
         </a>
       </div>
     </div>

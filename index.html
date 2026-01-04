@@ -33,6 +33,15 @@
     // --- Backend API base URL ---
     const API_URL = 'https://historical-feed-backend.onrender.com/api/articles';
 
+    // --- Shakespeare sonnet endpoint (backend proxy to MIT) ---
+    const SONNET_URL = 'https://historical-feed-backend.onrender.com/api/sonnet';
+
+    const fetchRandomSonnet = async () => {
+    const resp = await fetch(SONNET_URL);
+      if (!resp.ok) throw new Error('Failed to fetch sonnet');
+      return await resp.json(); // expects { number, title?, text, url, source }
+    };
+
 // --- Topic list (expand freely) ---
 const TOPICS = [
   { key: 'all', label: 'All Topics' },

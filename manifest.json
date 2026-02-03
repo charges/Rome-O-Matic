@@ -1,8 +1,8 @@
 {
-  "name": "Harge-O-Matic",
-  "short_name": "Harge-O",
-  "description": "Your personalized humanities + history article feed.",
-  "start_url": "/Harge-O-Matic/",
+  "name": "Rome-O-Matic",
+  "short_name": "Rome-O",
+  "description": "Your personalized Rome article feed.",
+  "start_url": "/Rome-O-Matic/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1e40af",

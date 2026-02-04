@@ -5,3 +5,4 @@ const APP_CONFIG = {
 
 const API_URL = `${APP_CONFIG.backendBase}/api/articles`;
 const SONNET_URL = `${APP_CONFIG.backendBase}/api/sonnet`;
+const TOPICS_URL = `${APP_CONFIG.backendBase}/api/topics`;

@@ -33,7 +33,7 @@
 
     /**
      * =========================
-     * Client-side per-topic cache (fix)
+     * Client-side per-topic cache
      * =========================
      * - Avoids refetching on topic switches
      * - TTL aligned with backend default (1 hour)
@@ -55,7 +55,7 @@
       try {
         localStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(cacheObj));
       } catch {
-        // ignore storage errors
+        // ignore
       }
     }
 
@@ -75,23 +75,46 @@
 
     /**
      * =========================
-     * API helpers
+     * URLs (from config.js)
      * =========================
+     * config.js defines:
+     *   - APP_CONFIG.backendBase
+     *   - API_URL (articles endpoint)
+     *   - SONNET_URL (sonnet endpoint)
+     *
+     * Add TOPICS_URL here so you do not need to change config.js.
      */
-    const fetchRandomSonnet = async () => {
-      const resp = await fetch(SONNET_URL);
-      if (!resp.ok) throw new Error("Failed to fetch sonnet");
+    const TOPICS_URL = `${APP_CONFIG.backendBase}/api/topics`;
+
+    /**
+     * =========================
+     * Fetch helpers (cache + busting)
+     * =========================
+     * - cache:"no-store" avoids browser cache issues (DevTools will show the request)
+     * - add _ts only on forced refresh to bust any intermediate caching
+     */
+    const fetchJsonNoStore = async (url) => {
+      const resp = await fetch(url, { cache: "no-store" });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(text || `Request failed: ${resp.status}`);
+      }
       return await resp.json();
     };
 
+    const fetchRandomSonnet = async (force = false) => {
+      const url = force ? `${SONNET_URL}?_ts=${Date.now()}` : SONNET_URL;
+      return await fetchJsonNoStore(url);
+    };
+
     const fetchTopicsFromBackend = async () => {
-      const resp = await fetch(TOPICS_URL);
-      if (!resp.ok) throw new Error("Failed to fetch topics");
-      return await resp.json(); // expects { topics:[{key, seedCategories, deepcatQueries}] }
+      // Always no-store so you can see it in DevTools and avoid stale GH Pages caches
+      const url = `${TOPICS_URL}?_ts=${Date.now()}`;
+      return await fetchJsonNoStore(url); // expects { topics:[{key, seedCategories, deepcatQueries}] }
     };
 
     const prettyLabelFromKey = (key) => {
-      // Example: "rome-churches-early" -> "Rome — Churches Early"
+      // "rome-churches-early" -> "Rome — Churches Early"
       const parts = String(key).split("-");
       if (!parts.length) return key;
       const head = parts[0] ? parts[0][0].toUpperCase() + parts[0].slice(1) : "Topic";
@@ -166,7 +189,6 @@
           key: t.key,
           label: prettyLabelFromKey(t.key)
         }));
-        // Optional: keep sonnet option (your existing behavior)
         const extra = [{ key: "sonnet", label: "Sonnet (MIT)" }];
         return [...base, ...backendTopics, ...extra];
       }, [topics]);
@@ -180,14 +202,13 @@
 
       /**
        * =========================
-       * Fetcher: topic-aware query param + client cache
+       * Fetcher: topic param + client cache + cache-busting on force
        * =========================
        */
       const fetchArticles = async (topic = "all", force = false) => {
         setLoading(true);
         setError(null);
 
-        // Sonnet-only view: do not hit /api/articles
         if (topic === "sonnet") {
           setAllArticles([]);
           setDisplayedArticles([]);
@@ -195,7 +216,7 @@
           setClientCached(false);
 
           try {
-            const s = await fetchRandomSonnet();
+            const s = await fetchRandomSonnet(force);
             setSonnet(s);
             setSonnetError(null);
           } catch (e) {
@@ -208,7 +229,6 @@
           return;
         }
 
-        // Client cache check (per topic) when NOT forcing
         if (!force) {
           const cacheKey = topic && topic !== "all" ? topic : "__all__";
           const hit = getCachedTopic(clientCache, cacheKey);
@@ -219,9 +239,8 @@
             setAllArticles(hit.articles);
             applyFilters(hit.articles, category, sourceFilter);
 
-            // still refresh sonnet (non-blocking-ish within same await)
             try {
-              const s = await fetchRandomSonnet();
+              const s = await fetchRandomSonnet(false);
               setSonnet(s);
               setSonnetError(null);
             } catch (e) {
@@ -236,23 +255,16 @@
         }
 
         try {
-          // Build URL with query param topic=<selected key> (this is the “verify the query param” part)
           let url = API_URL;
           const params = new URLSearchParams();
 
           if (force) params.append("force", "1");
           if (topic && topic !== "all") params.append("topic", topic);
+          if (force) params.append("_ts", String(Date.now())); // cache-buster on force
 
           if (params.toString()) url += "?" + params.toString();
 
-          const response = await fetch(url);
-          if (!response.ok) {
-            // If backend returns 400 unknown topic, show that message
-            const text = await response.text();
-            throw new Error(text || "Failed to fetch articles from server");
-          }
-
-          const data = await response.json();
+          const data = await fetchJsonNoStore(url);
 
           setServerCached(!!data.cached);
           setClientCached(false);
@@ -260,15 +272,13 @@
           setAllArticles(data.articles);
           applyFilters(data.articles, category, sourceFilter);
 
-          // Save to client cache (per topic)
           const cacheKey = topic && topic !== "all" ? topic : "__all__";
           const nextCache = setCachedTopic(clientCache, cacheKey, data.articles, data.cached);
           setClientCache(nextCache);
           saveClientCache(nextCache);
 
-          // Sonnet
           try {
-            const s = await fetchRandomSonnet();
+            const s = await fetchRandomSonnet(false);
             setSonnet(s);
             setSonnetError(null);
           } catch (e) {
@@ -286,8 +296,9 @@
 
       /**
        * =========================
-       * Initial load
+       * Initial load (topics + initial articles)
        * =========================
+       * This guarantees you will see /api/topics in DevTools Network.
        */
       useEffect(() => {
         (async () => {
@@ -300,21 +311,10 @@
             setTopics([]);
             setTopicsError("Unable to load topics.");
           } finally {
-            // Load default view
-            fetchArticles("all", false);
+            fetchArticles("all", true); // force once on first load so you always see /api/articles?_ts=...
           }
         })();
       }, []);
-
-      const handleCategoryChange = (cat) => {
-        setCategory(cat);
-        applyFilters(allArticles, cat, sourceFilter);
-      };
-
-      const handleSourceChange = (src) => {
-        setSourceFilter(src);
-        applyFilters(allArticles, category, src);
-      };
 
       const toggleSave = (article) => {
         setSavedArticles(prev => {
@@ -349,24 +349,15 @@
                 </span>
                 <button
                   onClick={() => toggleSave(article)}
-                  className={`p-1 rounded hover:bg-gray-100 transition-colors ${
-                    isSaved(article.id) ? "text-blue-600" : "text-gray-400"
-                  }`}
+                  className={`p-1 rounded hover:bg-gray-100 transition-colors ${isSaved(article.id) ? "text-blue-600" : "text-gray-400"}`}
                 >
-                  <Bookmark
-                    size={18}
-                    fill={isSaved(article.id) ? "currentColor" : "none"}
-                  />
+                  <Bookmark size={18} fill={isSaved(article.id) ? "currentColor" : "none"} />
                 </button>
               </div>
 
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">
-                {article.title}
-              </h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">{article.title}</h2>
 
-              <p className="text-gray-700 mb-4 leading-relaxed">
-                {article.extract}
-              </p>
+              <p className="text-gray-700 mb-4 leading-relaxed">{article.extract}</p>
 
               <a
                 href={article.url}
@@ -388,9 +379,7 @@
           <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6 hover:shadow-lg transition-shadow">
             <div className="p-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-500">
-                  Shakespeare (MIT)
-                </span>
+                <span className="text-xs font-semibold text-gray-500">Shakespeare (MIT)</span>
                 <a
                   href={sonnet.url}
                   target="_blank"
@@ -413,7 +402,6 @@
         );
       };
 
-      // Split feed: Wikipedia first, then Sonnet, then everyone else
       const wiki = displayedArticles.filter(a => a.source === "Wikipedia");
       const others = displayedArticles.filter(a => a.source !== "Wikipedia");
 
@@ -459,13 +447,8 @@
               </div>
 
               <div className="mt-2 flex items-center justify-between gap-3">
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Rome-O-Matic 1.0
-                </h1>
-
-                {topicsError && (
-                  <span className="text-xs text-red-600">{topicsError}</span>
-                )}
+                <h1 className="text-2xl font-bold text-gray-900">Rome-O-Matic 1.0</h1>
+                {topicsError && <span className="text-xs text-red-600">{topicsError}</span>}
               </div>
             </div>
           </header>
@@ -484,7 +467,6 @@
                       onChange={(e) => {
                         const value = e.target.value;
                         setSelectedTopic(value);
-                        // On topic change, do NOT force by default; client cache will handle fast switching
                         fetchArticles(value, false);
                       }}
                       className="bg-transparent focus:outline-none text-sm text-gray-800"
